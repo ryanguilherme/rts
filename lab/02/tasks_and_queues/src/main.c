@@ -1,7 +1,9 @@
 /*
 	Author: Ryan Guilherme (github.com/ryanguilherme)
 	Description: This program is a basic FreeRTOS program on Raspberry Pico W
-	using RP2040 to blink it onboard LED using a FreeRTOS Task
+	using RP2040 to comunicate two tasks using FreeRTOS, the task 1 blinks a led
+    and then sends to the queue the state of the led (0/1), the task 2 read the data
+    on the queue and then print the current led state to the serial output via usb
 */
 
 #include "FreeRTOS.h"
