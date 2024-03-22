@@ -1,57 +1,62 @@
-/*
+/**
 	Author: Ryan Guilherme (github.com/ryanguilherme)
-	Description: This program is a basic FreeRTOS program on Raspberry Pico W
-	using RP2040 to comunicate two tasks using FreeRTOS, the task 1 blinks a led
-    and then sends to the queue the state of the led (0/1), the task 2 read the data
-    on the queue and then print the current led state to the serial output via usb
-*/
-
+	Description: This program blink two leds, and if the defined button is pressed then blink the Raspberry Pico W onboard
+    led 3 times then end the program.
+**/
 #include "FreeRTOS.h"
 #include "task.h"
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "pico/cyw43_arch.h"
-#include "queue.h"
 
-static QueueHandle_t xQueue = NULL;
+const uint LED_0 = 13;
+const uint LED_1 = 15;
+TaskHandle_t TaskHandle_1;
+TaskHandle_t TaskHandle_2;
 
-void onboard_led_toggle() {
-    const uint BOARD_LED_PIN = CYW43_WL_GPIO_LED_PIN;
-    uint uIValueToSend = 0;
-    while (true) {
-	printf("Onboard led toggle!\n");
-        cyw43_arch_gpio_put(BOARD_LED_PIN, 1);
-        uIValueToSend = 1;
-        xQueueSend(xQueue, &uIValueToSend, 0U);
-        vTaskDelay(100);
-
-        cyw43_arch_gpio_put(BOARD_LED_PIN, 0);
-        uIValueToSend = 0;
-        xQueueSend(xQueue, &uIValueToSend, 0U);
-        vTaskDelay(100);
+/** This function receives a GPIO as a parameter, set as output and blink the led (alternate between 0 and 1) every 100 ms **/
+void led_blink(void * GPIO) {
+    gpio_init((int)GPIO);
+    gpio_set_dir((int)GPIO, GPIO_OUT);
+    while(1) {
+        gpio_put((int)GPIO, 1);
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+        gpio_put((int)GPIO, 0);
+        vTaskDelay(100 / portTICK_PERIOD_MS);
     }
 }
 
-void usb_task(void *pvParameters) {
-    uint uIReceivedValue;
-
-    while (1) {
-        xQueueReceive(xQueue, &uIReceivedValue, portMAX_DELAY);
-        if (uIReceivedValue) printf("LED IS ON! \n");
-        else                 printf("LED IS OFF! \n");
+/** This function set the GPIO 14, if this button is pressed, blink pico's onboard led 3 times then end the program **/
+void reset_button() {
+    const uint GPIO = 14;
+    gpio_init(GPIO);
+    gpio_set_dir(GPIO, GPIO_IN);
+    while(1) {
+        if (gpio_get(GPIO)) {
+            for (int i=0; i<3; i++) {
+                cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+                vTaskDelay(500 / portTICK_PERIOD_MS);
+                cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
+                vTaskDelay(500/ portTICK_PERIOD_MS);
+            }
+            vTaskDelete(&TaskHandle_1);
+            vTaskDelete(&TaskHandle_2);
+            gpio_put(LED_0, 0);
+            gpio_put(LED_1, 0);
+            vTaskDelete(NULL);
+        }
     }
 }
 
 int main()
 {
-    stdio_init_all();
-
-    xQueue = xQueueCreate(1, sizeof(uint));
-
     if (cyw43_arch_init()) return -1;
 
-    xTaskCreate(onboard_led_toggle, "Onboard_LED_Task", 256, NULL, 1, NULL);
-    xTaskCreate(usb_task, "USB_Task", 256, NULL, 1, NULL);
+    stdio_init_all();
+    xTaskCreate(led_blink, "LED_TASK_0", 256, (void *) LED_0, 1, &TaskHandle_1);
+    xTaskCreate(led_blink, "LED_TASK_1", 256, (void *) LED_1, 1, &TaskHandle_2);
+    xTaskCreate(reset_button, "RST_BUTTON", 256, NULL, 1, &TaskHandle_2);
+
     vTaskStartScheduler();
 
     while(1){};
