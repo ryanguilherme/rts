@@ -7,7 +7,6 @@
 #include "task.h"
 #include <stdio.h>
 #include "pico/stdlib.h"
-#include "pico/cyw43_arch.h"
 
 const uint LED_0 = 13;
 const uint LED_1 = 15;
@@ -35,9 +34,9 @@ void reset_button() {
     while(1) {
         if (gpio_get(GPIO)) {
             for (int i=0; i<3; i++) {
-                cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+                gpio_put(25, 1);
                 vTaskDelay(500 / portTICK_PERIOD_MS);
-                cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
+                gpio_put(25, 0);
                 vTaskDelay(500/ portTICK_PERIOD_MS);
             }
             gpio_put(LED_0, 0);
@@ -52,7 +51,7 @@ void reset_button() {
 int main()
 {
     stdio_init_all();
-    if (cyw43_arch_init()) return -1;
+    // if (cyw43_arch_init()) return -1;
     xTaskCreate(led_blink, "LED_TASK_0", 256, (void *) LED_0, 1, &TaskHandle_1);
     xTaskCreate(led_blink, "LED_TASK_1", 256, (void *) LED_1, 1, &TaskHandle_2);
     xTaskCreate(reset_button, "RST_BUTTON", 256, NULL, 1, &TaskHandle_2);

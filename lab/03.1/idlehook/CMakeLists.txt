@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.12)
 
 # Name project
-SET(ProjectName tasks_and_queues)
+SET(ProjectName idlehook)
 
 # Set board to the Wireless version
 SET(PICO_BOARD pico_w)

@@ -1,16 +1,17 @@
 cmake_minimum_required(VERSION 3.12)
 
 # Name project
-SET(ProjectName tasks_and_queues)
+SET(ProjectName newtasks)
 
 # Set board to the Wireless version
-SET(PICO_BOARD pico_w)
+# SET(PICO_BOARD pico_w)
 
 # Set any variables required for importing libraries
-# SET(FREERTOS_KERNEL_PATH /home/ryan/FreeRTOS-Kernel)
+SET(FREERTOS_KERNEL_PATH /home/ryan/FreeRTOS-Kernel)
 
 # Import those libraries
-include($ENV{FREERTOS_KERNEL_PATH}/portable/ThirdParty/GCC/RP2040/pico_sdk_import.cmake)
+#include(pico_sdk_import.cmake)
+include($ENV{PICO_SDK_IMPORT_PATH})
 include($ENV{FREERTOS_KERNEL_PATH}/portable/ThirdParty/GCC/RP2040/FreeRTOS_Kernel_import.cmake)
 
 # Define project

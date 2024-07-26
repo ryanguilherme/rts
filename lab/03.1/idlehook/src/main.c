@@ -13,6 +13,54 @@ const uint LED_0 = 13;
 const uint LED_1 = 15;
 TaskHandle_t TaskHandle_1;
 TaskHandle_t TaskHandle_2;
+TaskHandle_t TaskHandle_3;
+
+static unsigned long int idle_tick_counter = 0;
+void vApplicationIdleHook(void)
+{
+    unsigned long int tick = xTaskGetTickCount();
+    while (xTaskGetTickCount() == tick);
+    idle_tick_counter++;
+}
+
+void taskCPUUsage(void *pvParameters)
+{
+    unsigned long int idle_tick_last, ticks;
+    idle_tick_last = idle_tick_counter = 0;
+    for (;;) {
+        /* wait for 3 seconds */
+        vTaskDelay(3000/portTICK_PERIOD_MS);
+
+        /* calculate quantity of idle ticks per second */
+        if (idle_tick_counter > idle_tick_last)
+            ticks = idle_tick_counter - idle_tick_last;
+        else
+            ticks = 0xFFFFFFFF - idle_tick_last + idle_tick_counter;
+        ticks /= 4;
+
+        /* print idle ticks per second */
+        printf("%ld idle ticks per second (out of %ld)\n", ticks, configTICK_RATE_HZ);
+
+        /* calc and print CPU usage */
+        ticks = (configTICK_RATE_HZ - ticks) / 10;
+        printf("CPU usage: %d%%\n", ticks);
+
+        /* update idle ticks */
+        idle_tick_last = idle_tick_counter;
+    }
+}
+
+void taskUseCPU(void *pvParameters)
+{
+    unsigned int i, j;
+    for (;;) {
+        for (i = 0, j = 0; i < 10000; i++){
+            j *= i + 12.34;
+        }
+        vTaskDelay(100/portTICK_PERIOD_MS);
+    }
+}
+
 
 /** This function receives a GPIO as a parameter, set as output and blink the led (alternate between 0 and 1) every 100 ms **/
 void led_blink(void * GPIO) {
@@ -23,7 +71,7 @@ void led_blink(void * GPIO) {
         vTaskDelay(100 / portTICK_PERIOD_MS);
         gpio_put((int)GPIO, 0);
         vTaskDelay(100 / portTICK_PERIOD_MS);
-        printf("Led blink\n");
+        //printf("Led blink\n");
     }
 }
 
@@ -53,9 +101,11 @@ int main()
 {
     stdio_init_all();
     if (cyw43_arch_init()) return -1;
-    xTaskCreate(led_blink, "LED_TASK_0", 256, (void *) LED_0, 1, &TaskHandle_1);
-    xTaskCreate(led_blink, "LED_TASK_1", 256, (void *) LED_1, 1, &TaskHandle_2);
-    xTaskCreate(reset_button, "RST_BUTTON", 256, NULL, 1, &TaskHandle_2);
+    xTaskCreate(led_blink, "LED_TASK_0", 256, (void *) LED_0, 2, &TaskHandle_1);
+    xTaskCreate(led_blink, "LED_TASK_1", 256, (void *) LED_1, 2, &TaskHandle_2);
+    xTaskCreate(reset_button, "RST_BUTTON", 256, NULL, 1, &TaskHandle_3);
+
+    xTaskCreate(taskCPUUsage, (signed char *)"Task CPU Usage", configMINIMAL_STACK_SIZE * 4, (void *)NULL, 0, NULL);
 
     vTaskStartScheduler();
 
