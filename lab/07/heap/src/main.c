@@ -1,92 +1,61 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include <stdio.h>
+#include <stdlib.h>
+#include "portable.h"
 #include "pico/stdlib.h"
 #include "queue.h"
-#include "semphr.h"
 
-#define BUTTON_PIN_1    15
-#define BUTTON_PIN_2    16
-#define LED_PIN_1       14
-#define LED_PIN_2       17
+#define LED_PIN     13
+#define BUTTON_PIN  16
+#define BUTTON2_PIN 15
 
-SemaphoreHandle_t semaphore;
-uint button_flag = -1;
+QueueHandle_t queue;
 
-// This task changes button_flag value based on which button is being pressed
-void readButton(void *params) {
-
-    gpio_init(BUTTON_PIN_1);                gpio_init(BUTTON_PIN_2);
-    gpio_set_dir(BUTTON_PIN_1, GPIO_IN);   gpio_set_dir(BUTTON_PIN_2, GPIO_IN);
-    gpio_pull_up(BUTTON_PIN_1);             gpio_pull_up(BUTTON_PIN_2);
-
-    uint flag;
-
-    while(1) {
-        if (gpio_get(BUTTON_PIN_1) && !gpio_get(BUTTON_PIN_2)) {
-            flag = 1;
-        } else if (!gpio_get(BUTTON_PIN_1) && gpio_get(BUTTON_PIN_2)) {
-            flag = 2;
-        } else if (gpio_get(BUTTON_PIN_1) && gpio_get(BUTTON_PIN_2)) {
-            flag = 3;
-        } else {
-            flag = 0;
+void show_free_heap_size(void *pvParameters) {
+    unsigned int freeHeap;
+    float percentage;
+    while (1) {
+        freeHeap = xPortGetFreeHeapSize();
+        percentage = ((float)freeHeap / (float)configTOTAL_HEAP_SIZE) * 100;
+        if (xQueueSend(queue, &percentage, portMAX_DELAY) != pdPASS) {
+            printf("[ERROR!] show_free_heap_size: Could not send percentage value to queue!\n");
         }
-        if (xSemaphoreTake(semaphore, portMAX_DELAY) == pdTRUE) {
-            button_flag = flag;
-            xSemaphoreGive(semaphore);
-        } else {
-            printf("ReadButton TASK TRIED TO TAKE THE SEMAPHORE, BUT COULD NOT!\n");
-        }
+        printf("%ul\n", freeHeap);
+        vTaskDelay(500);
     }
 }
 
-// This task print which button is currently pressed
-void showState(void *params) {
-    uint flag;
-
-    while (1){
-        if (xSemaphoreTake(semaphore, portMAX_DELAY) == pdTRUE) {
-            flag = button_flag;
-            xSemaphoreGive(semaphore);
-            if (flag == 1) {
-                printf("BUTTON 1 PRESSED!\n");
-            } else if (flag == 2) {
-                printf("BUTTON 2 PRESSED!\n");
-            } else if (flag == 3) {
-                printf("BOTH BUTTONS PRESSED\n");
+void check_heap_percentage(void *pvParameters) {
+    float percentage;
+    while (1) {
+        if (xQueueReceive(queue, &percentage, portMAX_DELAY) == pdPASS) {
+            printf("Current free heap percentage: %.2f\n", percentage);
+            if (percentage <= 10) {
+                gpio_put(LED_PIN, 1);
             } else {
-                printf("NO BUTTON PRESSED\n");
+                gpio_put(LED_PIN, 0);
             }
-            sleep_ms(250);
         } else {
-            printf("ShowState TASK TRIED TO TAKE THE SEMAPHORE, BUT COULD NOT\n");
+            printf("[ERROR!] check_heap_percentage: Could not receive percentage value from queue!\n");
         }
+
+        vTaskDelay(500);
     }
 }
 
-// This task turn a led on based on which button is being pressed
-void main_task(void *params) {
-    uint flag;
-    gpio_init(LED_PIN_1);               gpio_init(LED_PIN_2);
-    gpio_set_dir(LED_PIN_1, GPIO_OUT);  gpio_set_dir(LED_PIN_2, GPIO_OUT);
-
-    while (1){
-        if (xSemaphoreTake(semaphore, portMAX_DELAY) == pdTRUE) {
-            
-            flag = button_flag;
-            xSemaphoreGive(semaphore);
-
-            if (flag == 3) {
-                gpio_put(LED_PIN_1, !gpio_get(LED_PIN_1)); gpio_put(LED_PIN_2, !gpio_get(LED_PIN_2));
-            } else if (flag == 1) {
-                gpio_put(LED_PIN_1, !gpio_get(LED_PIN_1));
-            } else if (flag == 2) {
-                gpio_put(LED_PIN_2, !gpio_get(LED_PIN_2));
+void fill_heap_memory(void *pvParameters) {
+    int *consumer;
+    float alloc_amount = 0.7;
+    while (1) {
+        if (gpio_get(BUTTON_PIN) == 1) {
+            consumer = (int*)pvPortMalloc(alloc_amount * sizeof(int));
+            vTaskDelay(20);
+        } else if (gpio_get(BUTTON2_PIN) == 1) {
+            if (consumer != NULL) {
+                vPortFree(consumer);
             }
-            vTaskDelay(50);
-        } else {
-            printf("MainTask TRIED TO TAKE THE SEMAPHORE, BUT COULD NOT!\n");
+            vTaskDelay(20);
         }
     }
 }
@@ -94,12 +63,16 @@ void main_task(void *params) {
 int main()
 {
     stdio_init_all();
+    gpio_init(LED_PIN);             gpio_set_dir(LED_PIN, GPIO_OUT);
+    gpio_init(BUTTON_PIN);          gpio_set_dir(BUTTON_PIN, GPIO_IN);
+    gpio_init(BUTTON2_PIN);         gpio_set_dir(BUTTON2_PIN, GPIO_IN);
+    gpio_pull_up(BUTTON_PIN);       gpio_pull_up(BUTTON2_PIN);
+    queue = xQueueCreate(10, sizeof(float));
 
-    semaphore =  xSemaphoreCreateMutex();
+    xTaskCreate(show_free_heap_size, "ShowFreeHeapSizeTask", 256, NULL, 1, NULL);
+    xTaskCreate(check_heap_percentage, "CheckHeapPercentageTask", 256, NULL, 1, NULL);
+    xTaskCreate(fill_heap_memory, "FillHeapMemoryTask", 256, NULL, 1, NULL);
 
-    xTaskCreate(readButton, "ReadButtonTask", 256, NULL, 2, NULL);
-    xTaskCreate(main_task, "MainTask", 256, NULL, 1, NULL);
-    xTaskCreate(showState, "ShowStateTask", 256, NULL, 1, NULL);
     vTaskStartScheduler();
 
     while(1){};
